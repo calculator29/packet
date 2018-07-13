@@ -12,6 +12,10 @@
 
 #include <pthread.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 struct PLIST{
   struct PLIST *next;
   u_int32_t ip, sport, dport;
@@ -86,6 +90,7 @@ void printPLIST(){
 
 
 
+
 void print_thread( void ){
   while(1){
     printPLIST();
@@ -94,6 +99,8 @@ void print_thread( void ){
   }
 }
 
+
+int f;
 #define SETIP(a,b,c,d) ( a<<0 | b<<8 | c<<16 | d<<24 )
 void get_packet( u_char *arg, const struct pcap_pkthdr *h, const u_char *p ){
   struct ip *ip;
@@ -105,6 +112,11 @@ void get_packet( u_char *arg, const struct pcap_pkthdr *h, const u_char *p ){
   if( ip->ip_dst.s_addr != SETIP(160,16,74,85) ) return;
 
   setPLIST(ip->ip_src.s_addr, ntohs(tcp->th_sport), ntohs(tcp->th_dport), ntohs(ip->ip_len));
+
+  char c;
+  if ( read(f,&c,1) == 1 ) {
+    pcap_breakloop((pcap_t *)arg);
+  }
 }
 
 #define DPCP_RCV_MAXSIZE   68
@@ -118,6 +130,7 @@ int main( void ){
 
   char dev[]      = "ens3";
   char protocol[] = "tcp";
+  f=open("/dev/tty", O_RDONLY|O_NONBLOCK);
 
   // デバイスオープン
   if( (handle = pcap_open_live( dev, DPCP_RCV_MAXSIZE, DPCP_PROMSCS_MODE, DPCP_RCV_TIMEOUT, ebuf )) == NULL ){printf("デバイスが開けません、実行許可を確認してください。\n");return -1;}
@@ -131,8 +144,9 @@ int main( void ){
 
   pthread_t thread;
   pthread_create( &thread, NULL, (void *)print_thread, NULL );
-  if( pcap_loop( handle, DPCP_NOLIMIT_LOOP, get_packet, NULL ) < 0 ){printf("実行できませんでした。\n");return -1;}
-
+  pcap_loop( handle, DPCP_NOLIMIT_LOOP, get_packet, (void *)handle );
+  printf("終了します\n");
+  pthread_cancel( thread );
   pcap_close( handle );
   return 0;
 }
